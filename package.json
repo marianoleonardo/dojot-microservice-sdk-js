@@ -1,6 +1,6 @@
 {
   "name": "@marianoleonardo/microservice-sdk",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A SDK to help to build microservices for the dojot platform",
   "engines": {
     "node": ">=12.18.4",
@@ -31,10 +31,10 @@
       "url": "http://www.apache.org/licenses/LICENSE-2.0"
     }
   ],
-  "homepage": "https://github.com/dojot/dojot-microservice-sdk-js",
+  "homepage": "https://github.com/marianoleonardo/dojot-microservice-sdk-js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dojot/dojot-microservice-sdk-js.git"
+    "url": "https://github.com/marianoleonardo/dojot-microservice-sdk-js.git"
   },
   "keywords": [
     "dojot",
