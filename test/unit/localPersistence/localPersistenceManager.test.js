@@ -551,6 +551,32 @@ describe('Local Persistence Manager', () => {
     expect(errors[2]).toBe('NotFoundError');
   });
 
+  it('Should throw an error when the batch fails', async () => {
+    expect.assertions(1);
+    /* Init objects */
+    dojotDB = new LocalPersistenceManager(
+      loggerMock, true, 'dojot_persistence_test',
+    );
+    await dojotDB.init();
+
+    /* Prepare */
+    const operations = new Map();
+    operations.set('test_level_1', {
+      operations: [
+        { type: 'put', key: 'test_key_1', value: 'test_value_1' },
+        { type: 'put', key: 'test_key_2', value: 'test_value_2' },
+        { type: 'put', key: 'test_key_3', value: 'test_value_3' },
+      ],
+    });
+
+    /* Test */
+    try {
+      await dojotDB.executeBatchForLevels(operations);
+    } catch (error) {
+      expect(error).toBeDefined();
+    }
+  });
+
   it('Should delete the data from the database on disk, when readInMemory is set to false. ', async () => {
     /* Init objects */
     let error;
@@ -842,5 +868,41 @@ describe('Local Persistence Manager', () => {
       });
       done();
     });
+  });
+
+  it('Should clear a sublevel', async () => {
+    /* Prepare */
+    expect.assertions(1);
+    await dojotDB.init();
+    await dojotDB.put(
+      'test_level_1', 'test_key_1', 'test_value_1',
+    );
+
+    /* Test */
+    await dojotDB.clear('test_level_1');
+
+    try {
+      await dojotDB.get('test_level_1', 'test_key_1');
+    } catch (notFoundError) {
+      expect(notFoundError.message).toEqual('Key not found in database [test_key_1]');
+    }
+  });
+
+  it('Should clear a sublevel', async () => {
+    /* Prepare */
+    expect.assertions(1);
+    await dojotDB.init();
+    await dojotDB.put(
+      'test_level_1', 'test_key_1', 'test_value_1',
+    );
+
+    /* Test */
+    await dojotDB.clear('test_level_1');
+
+    try {
+      await dojotDB.get('test_level_1', 'test_key_1');
+    } catch (notFoundError) {
+      expect(notFoundError.message).toEqual('Key not found in database [test_key_1]');
+    }
   });
 });

@@ -67,12 +67,17 @@ describe('Kafka producer', () => {
   });
 
   describe('Producer creation', () => {
-    it('Should create a producer connection and fail to produce', () => {
+    it('Should create a producer connection and fail to produce', async () => {
+      expect.assertions(1);
       const producer = new Producer();
       producer.connect();
 
       producer.isReady = false;
-      expect(producer.produce()).rejects.toThrow();
+      try {
+        await producer.produce();
+      } catch (error) {
+        expect(error).toBeDefined();
+      }
     });
 
     it('should successfully create a Kafka producer', () => {
@@ -114,243 +119,241 @@ describe('Kafka producer', () => {
     });
   });
 
-  describe('Kafka connection handling', () => {
-    it('should connect to Kafka successfully', (done) => {
-      /**
-       * This test case will execute the connect function. As it returns a
-       * promise that will wait for Kafka library to emit a 'ready' event to
-       * be resolved, then we'll have to append two more promises: one for
-       * retrieve the registered callback and execute it and another one to
-       * check whether executing that callback leads to a proper state of
-       * consumer object (i.e., checks whether it calls the correct functions.
-       */
-      // >> Tested code
-      const producer = new Producer(mockConfig);
-      const connectPromise = producer.connect();
-      // << Tested code
+  // describe('Kafka connection handling', () => {
+  it('should connect to Kafka successfully', (done) => {
+    /**
+     * This test case will execute the connect function. As it returns a
+     * promise that will wait for Kafka library to emit a 'ready' event to
+     * be resolved, then we'll have to append two more promises: one for
+     * retrieve the registered callback and execute it and another one to
+     * check whether executing that callback leads to a proper state of
+     * consumer object (i.e., checks whether it calls the correct functions.
+     */
+    // >> Tested code
+    const producer = new Producer(mockConfig);
+    const connectPromise = producer.connect();
+    // << Tested code
 
-      // This promise will get the callback registered in the 'consumer.on'
-      // call
-      const callbackPromiseReady = new Promise((resolve) => {
-        expect(mockKafka.producer.on).toHaveBeenCalled();
-        // Generate a 'ready' event so that it won't trigger a rejection
-        // First call is performed at Consumer consructor
-        // Second call is the 'ready' event registration
-        // Third call is the 'event.error' event registration
-        const mockReadyCallback = mockKafka.producer.on.mock.calls[1][1];
-        mockReadyCallback();
-        resolve();
-      });
-
-      // This will check whether all expected functions were called and
-      // states are correct.
-      const postReadyCallbackAnalysis = new Promise((resolve) => {
-        expect(producer.isReady).toBeTruthy();
-        resolve();
-      });
-
-      // This will simulate a "event.error" notification from node-rdkafka
-      const callbackPromiseError = new Promise((resolve) => {
-        expect(mockKafka.producer.on).toHaveBeenCalled();
-        const mockErrorCallback = mockKafka.producer.on.mock.calls[2][1];
-        mockErrorCallback();
-        resolve();
-      });
-
-      const postErrorCallbackAnalysis = new Promise((resolve) => {
-        expect(producer.isReady).toBeFalsy();
-        resolve();
-      });
-
-      expect(mockKafka.producer.connect).toHaveBeenCalled();
-
-      Promise.all([connectPromise, callbackPromiseReady, postReadyCallbackAnalysis]).then(() => {
-        // Checking error path
-
-        const connectPromiseError = producer.connect();
-
-        Promise.all([connectPromiseError, callbackPromiseError, postErrorCallbackAnalysis])
-          .then(() => {
-            done('error - promise should be rejected');
-          }).catch(() => {
-            done();
-          });
-      }).catch((error) => {
-        done(error);
-      });
+    // This promise will get the callback registered in the 'consumer.on'
+    // call
+    const callbackPromiseReady = new Promise((resolve) => {
+      expect(mockKafka.producer.on).toHaveBeenCalled();
+      // Generate a 'ready' event so that it won't trigger a rejection
+      // First call is performed at Consumer consructor
+      // Second call is the 'ready' event registration
+      // Third call is the 'event.error' event registration
+      const mockReadyCallback = mockKafka.producer.on.mock.calls[1][1];
+      mockReadyCallback();
+      resolve();
     });
 
-    it('should disconnect from Kafka cleanly', (done) => {
-      /**
-       * This tests will check if the module can properly process a
-       * disconnection request.
-       */
-      // >> Tested code
-      const producer = new Producer(mockConfig);
-      producer.isReady = true;
-      const disconnectPromise = producer.disconnect();
-      // << Tested code
-
-      const flushCallbackPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.flush).toHaveBeenCalled();
-        const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
-        mockFlushCbk();
-        resolve();
-      });
-
-      const disconnectCbkPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.disconnect).toHaveBeenCalled();
-        const mockDisconnectCbk = mockKafka.producer.disconnect.mock.calls[0][0];
-        mockDisconnectCbk();
-        resolve();
-      });
-
-      // >> Results verification
-      Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
-        expect(producer.isReady).toBeFalsy();
-        done();
-      }).catch((error) => {
-        done(`should not raise an error: ${error}`);
-      });
-      // << Results verification
+    // This will check whether all expected functions were called and
+    // states are correct.
+    const postReadyCallbackAnalysis = new Promise((resolve) => {
+      expect(producer.isReady).toBeTruthy();
+      resolve();
     });
 
-    it("should reject disconnection if can't flush messages", (done) => {
-      /**
-       * This test will check if the module can process a failure while
-       * flushing messages. This is performed right before the actual
-       * disconnection request, in order to send all buffered messages
-       * that were schedule to be sent.
-       */
-
-      // >> Tested code
-      const producer = new Producer(mockConfig);
-      producer.isReady = true;
-      const disconnectPromise = producer.disconnect();
-      // << Tested code
-
-      const flushCallbackPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.flush).toHaveBeenCalled();
-        const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
-        mockFlushCbk('sample-flush-error');
-        resolve();
-      });
-
-      const disconnectCbkPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.disconnect).not.toHaveBeenCalled();
-        resolve();
-      });
-
-      // >> Results verification
-      Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
-        done('promise should not be resolved.');
-      }).catch((error) => {
-        expect(producer.isReady).toBeTruthy();
-        expect(error).toEqual('sample-flush-error');
-        done();
-      });
-      // << Results verification
+    // This will simulate a "event.error" notification from node-rdkafka
+    const callbackPromiseError = new Promise((resolve) => {
+      expect(mockKafka.producer.on).toHaveBeenCalled();
+      const mockErrorCallback = mockKafka.producer.on.mock.calls[2][1];
+      mockErrorCallback();
+      resolve();
     });
 
-    it("should reject disconnection if it can't reach out the Kafka broker", (done) => {
-      /**
-       * The same purpose as the last one, this time checking if the module
-       * can handle errors while disconnecting from Kafka. This error
-       * can happen in both flush and disconnection operation.
-       */
-
-      // >> Tested code
-      const producer = new Producer(mockConfig);
-      producer.isReady = true;
-      const disconnectPromise = producer.disconnect();
-      // << Tested code
-
-      const flushCallbackPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.flush).toHaveBeenCalled();
-        const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
-        mockFlushCbk();
-        resolve();
-      });
-
-      const disconnectCbkPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.disconnect).toHaveBeenCalled();
-        const mockDisconnectCbk = mockKafka.producer.disconnect.mock.calls[0][0];
-        mockDisconnectCbk('sample-disconnect-error');
-        resolve();
-      });
-
-      // >> Results verification
-      Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
-        done('promise should not be resolved.');
-      }).catch((error) => {
-        expect(producer.isReady).toBeTruthy();
-        expect(error).toEqual('sample-disconnect-error');
-        done();
-      });
-      // << Results verification
+    const postErrorCallbackAnalysis = new Promise((resolve) => {
+      expect(producer.isReady).toBeFalsy();
+      resolve();
     });
 
-    it('should reject disconnection if it takes too long', (done) => {
-      /**
-       * The same purpose as the last one, this time checking if the module
-       * can handle errors while disconnecting from Kafka. This error
-       * can happen in both flush and disconnection operation.
-       */
+    expect(mockKafka.producer.connect).toHaveBeenCalled();
 
-      // >> Tested code
-      const producer = new Producer(mockConfig);
-      producer.isReady = true;
-      const disconnectPromise = producer.disconnect();
-      // << Tested code
+    Promise.all([connectPromise, callbackPromiseReady, postReadyCallbackAnalysis]).then(() => {
+      // Checking error path
+      const connectPromiseError = producer.connect();
 
-      const flushCallbackPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.flush).toHaveBeenCalled();
-        const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
-        mockFlushCbk();
-        resolve();
-      });
+      Promise.all([connectPromiseError, callbackPromiseError, postErrorCallbackAnalysis])
+        .then(() => {
+          done('error - promise should be rejected');
+        }).catch(() => {
+          done();
+        });
+    }).catch((error) => {
+      done(error);
+    });
+  });
 
-      const disconnectCbkPromise = new Promise((resolve) => {
-        expect(mockKafka.producer.disconnect).toHaveBeenCalled();
-        jest.runAllTimers();
-        resolve();
-      });
+  it('should disconnect from Kafka cleanly', (done) => {
+    /**
+     * This tests will check if the module can properly process a
+     * disconnection request.
+     */
+    // >> Tested code
+    const producer = new Producer(mockConfig);
+    producer.isReady = true;
+    const disconnectPromise = producer.disconnect();
+    // << Tested code
 
-      // >> Results verification
-      Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
-        done('promise should not be resolved.');
-      }).catch((error) => {
-        expect(producer.isReady).toBeTruthy();
-        expect(error.message).toEqual('disconnection timeout');
-        done();
-      });
-      // << Results verification
+    const flushCallbackPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.flush).toHaveBeenCalled();
+      const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
+      mockFlushCbk();
+      resolve();
     });
 
-
-    it('should ignore disconnection request if not yet connected', (done) => {
-      /**
-       * This test will check whether it can handle disconnection request
-       * even if it is not yet connected. It is important that this
-       * information (the producer is not connected) is logged so the
-       * developer is able to know whether this is should happen or not.
-       */
-
-      // >> Tested code
-      const producer = new Producer(mockConfig);
-      const disconnectPromise = producer.disconnect();
-      // << Tested code
-
-      // >> Results verification
-      disconnectPromise.then(() => {
-        expect(mockKafka.producer.flush).not.toHaveBeenCalled();
-        expect(mockKafka.producer.disconnect).not.toHaveBeenCalled();
-        done();
-      }).catch(() => {
-        done('promise should be resolved.');
-      });
-      // << Results verification
+    const disconnectCbkPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.disconnect).toHaveBeenCalled();
+      const mockDisconnectCbk = mockKafka.producer.disconnect.mock.calls[0][0];
+      mockDisconnectCbk();
+      resolve();
     });
+
+    // >> Results verification
+    Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
+      expect(producer.isReady).toBeFalsy();
+      done();
+    }).catch((error) => {
+      done(`should not raise an error: ${error}`);
+    });
+    // << Results verification
+  });
+
+  it("should reject disconnection if can't flush messages", (done) => {
+    /**
+     * This test will check if the module can process a failure while
+     * flushing messages. This is performed right before the actual
+     * disconnection request, in order to send all buffered messages
+     * that were schedule to be sent.
+     */
+
+    // >> Tested code
+    const producer = new Producer(mockConfig);
+    producer.isReady = true;
+    const disconnectPromise = producer.disconnect();
+    // << Tested code
+
+    const flushCallbackPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.flush).toHaveBeenCalled();
+      const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
+      mockFlushCbk('sample-flush-error');
+      resolve();
+    });
+
+    const disconnectCbkPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.disconnect).not.toHaveBeenCalled();
+      resolve();
+    });
+
+    // >> Results verification
+    Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
+      done('promise should not be resolved.');
+    }).catch((error) => {
+      expect(producer.isReady).toBeTruthy();
+      expect(error).toEqual('sample-flush-error');
+      done();
+    });
+    // << Results verification
+  });
+
+  it("should reject disconnection if it can't reach out the Kafka broker", (done) => {
+    /**
+     * The same purpose as the last one, this time checking if the module
+     * can handle errors while disconnecting from Kafka. This error
+     * can happen in both flush and disconnection operation.
+     */
+
+    // >> Tested code
+    const producer = new Producer(mockConfig);
+    producer.isReady = true;
+    const disconnectPromise = producer.disconnect();
+    // << Tested code
+
+    const flushCallbackPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.flush).toHaveBeenCalled();
+      const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
+      mockFlushCbk();
+      resolve();
+    });
+
+    const disconnectCbkPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.disconnect).toHaveBeenCalled();
+      const mockDisconnectCbk = mockKafka.producer.disconnect.mock.calls[0][0];
+      mockDisconnectCbk('sample-disconnect-error');
+      resolve();
+    });
+
+    // >> Results verification
+    Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
+      done('promise should not be resolved.');
+    }).catch((error) => {
+      expect(producer.isReady).toBeTruthy();
+      expect(error).toEqual('sample-disconnect-error');
+      done();
+    });
+    // << Results verification
+  });
+
+  it('should reject disconnection if it takes too long', (done) => {
+    /**
+     * The same purpose as the last one, this time checking if the module
+     * can handle errors while disconnecting from Kafka. This error
+     * can happen in both flush and disconnection operation.
+     */
+
+    // >> Tested code
+    const producer = new Producer(mockConfig);
+    producer.isReady = true;
+    const disconnectPromise = producer.disconnect();
+    // << Tested code
+
+    const flushCallbackPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.flush).toHaveBeenCalled();
+      const mockFlushCbk = mockKafka.producer.flush.mock.calls[0][1];
+      mockFlushCbk();
+      resolve();
+    });
+
+    const disconnectCbkPromise = new Promise((resolve) => {
+      expect(mockKafka.producer.disconnect).toHaveBeenCalled();
+      jest.runAllTimers();
+      resolve();
+    });
+
+    // >> Results verification
+    Promise.all([disconnectPromise, flushCallbackPromise, disconnectCbkPromise]).then(() => {
+      done('promise should not be resolved.');
+    }).catch((error) => {
+      expect(producer.isReady).toBeTruthy();
+      expect(error.message).toEqual('disconnection timeout');
+      done();
+    });
+    // << Results verification
+  });
+
+
+  it('should ignore disconnection request if not yet connected', (done) => {
+    /**
+     * This test will check whether it can handle disconnection request
+     * even if it is not yet connected. It is important that this
+     * information (the producer is not connected) is logged so the
+     * developer is able to know whether this is should happen or not.
+     */
+
+    // >> Tested code
+    const producer = new Producer(mockConfig);
+    const disconnectPromise = producer.disconnect();
+    // << Tested code
+
+    // >> Results verification
+    disconnectPromise.then(() => {
+      expect(mockKafka.producer.flush).not.toHaveBeenCalled();
+      expect(mockKafka.producer.disconnect).not.toHaveBeenCalled();
+      done();
+    }).catch(() => {
+      done('promise should be resolved.');
+    });
+    // << Results verification
   });
 
   describe('Kafka Get status', () => {
